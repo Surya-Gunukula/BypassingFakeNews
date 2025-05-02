@@ -5,12 +5,11 @@ from datasets import Dataset
 from peft import get_peft_model, LoraConfig, TaskType
 from tqdm import tqdm
 
-from generatePrompts import generateList
+from generatePrompts import generateList, generateRealisticPrompts
 
-device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+device = "mps" if torch.backends.mps.is_available() else "cpu"
 
-
-model_name = "gpt2"
+model_name = "gpt2-medium"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token
 
@@ -36,8 +35,6 @@ bert_model = AutoModelForSequenceClassification.from_pretrained("./resultsComple
 bert_model.eval()
 bert_model.requires_grad_(False)
 
-prompts = generateList()
-
 def get_reward(generated_texts):
     inputs = bert_tokenizer(generated_texts, return_tensors="pt", padding=True, truncation=True).to("mps")
     with torch.no_grad():
@@ -45,12 +42,18 @@ def get_reward(generated_texts):
         probs = torch.softmax(outputs.logits, dim=-1)
         return probs[:, 1]
     
-prompts = generateList()
+prompts = generateRealisticPrompts(20)
 
 responses = []
 for prompt in tqdm(prompts):
     inputs = tokenizer(prompt, return_tensors="pt").to(device)
-    output_ids = model.generate(**inputs, max_new_tokens=50, pad_token_id=tokenizer.eos_token_id)
+    output_ids = model.generate(**inputs, 
+                                max_new_tokens=256, 
+                                temperature=0.9,
+                                top_p=0.95,
+                                do_sample=True,
+                                pad_token_id=tokenizer.eos_token_id
+                                )
     decoded = tokenizer.decode(output_ids[0], skip_special_tokens=True)
     responses.append((prompt, decoded))
 
@@ -71,9 +74,22 @@ filtered_data = [
     if r > 0.8  # you can lower this if too few examples
 ]
 
+print(filtered_data[0])
+
 print(f"Selected {len(filtered_data)} / {len(prompts)} responses with high reward.")
 
 dataset = Dataset.from_list(filtered_data)
+
+def tokenize(example):
+    encoded = tokenizer(example["text"],
+                        truncation = True,
+                        padding = "max_length",
+                        max_length = 512
+            )
+    encoded["labels"] = encoded["input_ids"].copy()
+    return encoded
+
+tokenized_dataset = dataset.map(tokenize, remove_columns=["text"])
 
 # --- Step 4: Fine-tune with LoRA on good responses ---
 data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
@@ -85,7 +101,8 @@ training_args = TrainingArguments(
     logging_steps=10,
     save_strategy="epoch",
     fp16=torch.cuda.is_available(), 
-    report_to="none"
+    report_to="none",
+    remove_unused_columns=False
 )
 
 trainer = Trainer(
@@ -93,7 +110,7 @@ trainer = Trainer(
     tokenizer=tokenizer,
     args=training_args,
     data_collator=data_collator,
-    train_dataset=dataset,
+    train_dataset=tokenized_dataset,
 )
 
 trainer.train()

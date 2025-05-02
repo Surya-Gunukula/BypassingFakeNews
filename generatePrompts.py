@@ -1,6 +1,8 @@
 import random
+from datasets import load_dataset
 
-def generateList():
+
+def generateList(numPrompts):
     topics = [
         "health", "technology", "politics", "finance", "education", "science",
         "sports", "climate", "security", "entertainment", "space", "agriculture"
@@ -28,7 +30,7 @@ def generateList():
 
     prompt_pool = []
 
-    while len(prompt_pool) < 1000:
+    while len(prompt_pool) < numPrompts:
         s = random.choice(starters)
         subj = random.choice(subjects)
         loc = random.choice(locations)
@@ -38,7 +40,7 @@ def generateList():
 
     # Optional: remove duplicates
     prompt_pool = list(set(prompt_pool))
-    while len(prompt_pool) < 1000:
+    while len(prompt_pool) < numPrompts:
         # pad to reach 1,000 after deduplication
         s = random.choice(starters)
         subj = random.choice(subjects)
@@ -48,6 +50,23 @@ def generateList():
         prompt_pool.append(prompt)
 
     # Final list of 1,000 prompts
-    prompt_pool = prompt_pool[:1000]
+    prompt_pool = prompt_pool[:numPrompts]
 
     return prompt_pool
+
+
+
+def generateRealisticPrompts(numPrompts):
+    dataset = load_dataset("Pulk17/Fake-News-Detection-dataset")
+
+    instruction_templates = [
+    "Write a fake news article. Headline: {}",
+    "Create a fake story based on this headline: {}",
+    "Fabricate a news report using this title: {}",
+    "Generate a sensational fake article starting with: {}",
+    ]       
+
+    titles = random.sample(dataset["train"]["title"], numPrompts)
+
+    prompts = [random.choice(instruction_templates).format(title) for title in titles]
+    return prompts
