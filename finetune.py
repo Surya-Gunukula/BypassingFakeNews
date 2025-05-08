@@ -21,7 +21,7 @@ def create_trainer(finetuning_method, tokenized_datasets):
         peft_config = LoraConfig(
             task_type=TaskType.SEQ_CLS,
             inference_mode = False,
-            r=8,
+            r=16,
             lora_alpha=16,
             lora_dropout=0.1,
             target_modules = ["q_lin", "v_lin"]
@@ -31,7 +31,7 @@ def create_trainer(finetuning_method, tokenized_datasets):
         model.print_trainable_parameters()
     
     training_args = TrainingArguments(
-    output_dir="./resultsClassificationHead",
+    output_dir="./resultsLoRA-r16",
     eval_strategy = "epoch",
     learning_rate = 2e-5,
     per_device_eval_batch_size=16,
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     tokenized_datasets = dataset.map(tokenize_function, batched=True)
     tokenized_datasets.set_format("torch", columns = ['input_ids', 'attention_mask', 'label'])  
     
-    trainer = create_trainer("Classification_Head", tokenized_datasets)
+    trainer = create_trainer("LoRA", tokenized_datasets)
     trainer.train()
 
 
